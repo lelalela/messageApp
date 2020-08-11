@@ -1,8 +1,9 @@
 package svnJavaBuilder.utils;
 
-import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.Collection;
 import java.util.Iterator;
@@ -12,110 +13,132 @@ import org.tmatesoft.svn.core.SVNLogEntry;
 import org.tmatesoft.svn.core.SVNLogEntryPath;
 import org.tmatesoft.svn.core.SVNProperties;
 import org.tmatesoft.svn.core.SVNURL;
+import org.tmatesoft.svn.core.auth.BasicAuthenticationManager;
 import org.tmatesoft.svn.core.io.SVNRepository;
 import org.tmatesoft.svn.core.io.SVNRepositoryFactory;
 
 public class SvnJavaBuilder {
 
 	public static void main(String[] args) throws Exception {
-		String url = "svn://실제_접속가능한_SVN주소를_입력하기";
-		// String svnUser = "";
-		// String svnPassword = "";
 
-		SVNURL svnUrl = SVNURL.parseURIDecoded(url);
-		SVNRepository svnRepo = SVNRepositoryFactory.create(svnUrl);
+		String url = "svn url";
+		String id = "id";
+		String passwd = "passwd";
+		String targetPath = "d:/build/";
+		long revNum = 0;
+		
+		SvnJavaBuilder sjb = new SvnJavaBuilder();
+		sjb.getSvnInfo(url, id, passwd, targetPath, revNum);
+	}
+	
+	public void getSvnInfo(String url, String id, String passwd, String targetPath, long revNum){
+		try {
+			SVNURL svnUrl = SVNURL.parseURIDecoded(url);
+			SVNRepository svnRepo = SVNRepositoryFactory.create(svnUrl);
 
-		// BasicAuthenticationManager authManager = new
-		// BasicAuthenticationManager(svnUser, svnPassword);
-		// svnRepo.setAuthenticationManager(authManager);
+			BasicAuthenticationManager authManager = new BasicAuthenticationManager(id, passwd);
+			svnRepo.setAuthenticationManager(authManager);
 
-		long latestRevision = svnRepo.getLatestRevision();
-		System.out.println("latestRevision : " + latestRevision);
+			long latestRevision = revNum == 0 ? svnRepo.getLatestRevision() : revNum;
 
-		long startRevision = latestRevision;
-		long endRevision = latestRevision;
+			long startRevision = latestRevision;
+			long endRevision = latestRevision;
 
-		Collection<SVNLogEntry> logEntries = null;
-		logEntries = svnRepo.log(new String[] { "" }, null, startRevision, endRevision, true, true);
+			Collection<SVNLogEntry> logEntries = svnRepo.log(new String[] {""}, null, startRevision, endRevision, true, true);
+			
 
-		Iterator entries = logEntries.iterator();
-		while (entries.hasNext()) {
-			SVNLogEntry logEntry = (SVNLogEntry) entries.next();
-			if (logEntry == null) {
-				continue;
-			}
+			Iterator<SVNLogEntry> entries = logEntries.iterator();
+			while (entries.hasNext()) {
+				SVNLogEntry logEntry = entries.next();
+				if (logEntry == null) {
+					continue;
+				}
 
-			System.out.println("---------------------------------------------");
-			System.out.println("revision: " + logEntry.getRevision());
-			System.out.println("author: " + logEntry.getAuthor());
-			System.out.println("date: " + logEntry.getDate());
-			System.out.println("log message: " + logEntry.getMessage());
+				System.out.println("---------------------------------------------");
+				System.out.println("revision: " + logEntry.getRevision());
+				System.out.println("author: " + logEntry.getAuthor());
+				System.out.println("date: " + logEntry.getDate());
+				System.out.println("log message: " + logEntry.getMessage());
 
-			if (logEntry.getChangedPaths() == null || logEntry.getChangedPaths().size() == 0) {
-				continue;
-			}
+				if (logEntry.getChangedPaths() == null || logEntry.getChangedPaths().size() == 0) {
+					continue;
+				}
 
-			System.out.println();
-			System.out.println("changed paths:");
-			Set changedPathsSet = logEntry.getChangedPaths().keySet();
-			Iterator changedPaths = changedPathsSet.iterator();
-			while (changedPaths.hasNext()) {
-				SVNLogEntryPath entryPath = (SVNLogEntryPath) logEntry.getChangedPaths().get(changedPaths.next());
-
-				if (entryPath.getCopyPath() != null) {
-					System.out.println(" " + entryPath.getType() + " " + entryPath.getPath() + "(from "
-							+ entryPath.getCopyPath() + " revision " + entryPath.getCopyRevision() + ")");
-				} else {
-					System.out.println(" " + entryPath.getType() + " " + entryPath.getPath());
+				Set changedPathsSet = logEntry.getChangedPaths().keySet();
+				Iterator changedPaths = changedPathsSet.iterator();
+				while (changedPaths.hasNext()) {
+					SVNLogEntryPath entryPath = (SVNLogEntryPath) logEntry.getChangedPaths().get(changedPaths.next());
+					this.getSVNFileContentToFile(svnRepo, latestRevision, entryPath.getPath(), targetPath);
 				}
 			}
+		} catch (Exception e) {
+			// TODO: handle exception
 		}
 	}
-
-	public static void getSVNFileContentToFile(SVNRepository svnRepo, long revision, String path) {
+	
+	public void getSVNFileContentToFile(SVNRepository svnRepo, long revNum, String path, String targetPath)
+			throws Exception {
 		FileOutputStream outputStream = null;
-		File file = null;
 
 		try {
-			file = new File("temp.txt");
-			if (file.exists()) {
-				file.delete();
-				file.createNewFile();
-			} else {
-				file.createNewFile();
+			String[] splitPath = path.split("/");
+			String folder = targetPath + splitPath[1] + "/" + revNum + "/";
+			String subFolder = "";
+
+			for (int i = 2; i < splitPath.length - 1; i++) {
+				subFolder += "/" + splitPath[i];
 			}
 
-			outputStream = new FileOutputStream(file);
-			// svnRepo.getFile(path, SVNRevision.HEAD.getNumber(), new
-			// SVNProperties(), outputStream);
-			svnRepo.getFile(path, revision, new SVNProperties(), outputStream);
+			String fileName = path.substring(path.lastIndexOf("/") + 1, path.length());
+			File fileFolder = new File(folder + subFolder);
+
+			if (!fileFolder.exists()) {
+				fileFolder.mkdirs();
+			}
+
+			String fullFileName = fileFolder + "/" + fileName;
+
+			File newFile = new File(fullFileName);
+
+			outputStream = new FileOutputStream(newFile);
+			svnRepo.getFile(path, revNum, new SVNProperties(), outputStream);
+
+			flush(outputStream);
+
+			if (fileName.toLowerCase().indexOf(".java") > -1) {
+				this.runCompileCmd(fullFileName);
+			}
 
 		} catch (Exception e) {
 			e.printStackTrace();
 
 		} finally {
-			flush(outputStream);
 			close(outputStream);
 		}
 	}
+	
+	public void runCompileCmd(String fullFileName) throws Exception {
 
-	public static void getSVNFileContent(SVNRepository svnRepo, long revision, String path) {
-		ByteArrayOutputStream outputStream = null;
-
+		String encoding = " -encoding UTF-8";
+		String sourcePath = " -sourcepath src path";
+		String classPath = " -classpath lib path";
+		String runCmd = "javac.exe" + encoding + sourcePath + classPath + " " + fullFileName;
+		String[] cmd = new String[] { "cmd.exe", "/c", runCmd };
+		
+		Runtime run = Runtime.getRuntime();
+		Process process = null;
 		try {
-			outputStream = new ByteArrayOutputStream();
-			// svnRepo.getFile(path, SVNRevision.HEAD.getNumber(), new
-			// SVNProperties(), outputStream);
-			svnRepo.getFile(path, revision, new SVNProperties(), outputStream);
-
-			System.out.println(outputStream.toString());
-
+			process = run.exec(cmd);
+			printStream(process);
 		} catch (Exception e) {
-			e.printStackTrace();
-
+			// TODO: handle exception
 		} finally {
-			flush(outputStream);
-			close(outputStream);
+			if(run != null){
+				run.gc();
+			}
+			if(process != null){
+				process.destroy();
+			}
 		}
 	}
 
@@ -139,4 +162,18 @@ public class SvnJavaBuilder {
 		}
 	}
 
+	public void printStream(Process process) throws IOException, InterruptedException {
+		process.waitFor();
+		try (InputStream psout = process.getInputStream()) {
+			copy(psout, System.out);
+		}
+	}
+
+	public void copy(InputStream input, OutputStream output) throws IOException {
+		byte[] buffer = new byte[1024];
+		int n = 0;
+		while ((n = input.read(buffer)) != -1) {
+			output.write(buffer, 0, n);
+		}
+	}
 }
