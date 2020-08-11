@@ -1,4 +1,4 @@
-package svnJavaBuilder.ldcc.utils;
+package svnJavaBuilder.utils;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
